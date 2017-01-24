@@ -95,17 +95,21 @@ func (l *leaderboard) createUser(name, email, password string, groups []string, 
 		return errors.New("could not generate salt: " + err.Error())
 	}
 	l.users[name] = entry
-	// postUser adds and validates the contractTxns
+	// postUser validates the contractTxns
 	return l.postUser(entry, contractTxns)
 }
 
 // TODO: support updating email/groups
 func (l *leaderboard) postUser(entry *userEntry, contractTxns []types.Transaction) error {
+	if len(contractTxns) == 0 {
+		return nil
+	}
 	// validate contractTxns
 	entry, ok := l.users[entry.name]
 	if !ok {
 		return errors.New("user does not exist")
 	}
+	newcontracts := make(map[types.FileContractID]contractEntry)
 	for _, txn := range contractTxns {
 		if len(txn.FileContractRevisions) == 0 {
 			continue
@@ -116,7 +120,7 @@ func (l *leaderboard) postUser(entry *userEntry, contractTxns []types.Transactio
 		}
 		hostOutput := rev.NewValidProofOutputs[1].UnlockHash
 		var currentContract *contractEntry
-		for _, c := range entry.contracts {
+		for _, c := range newcontracts {
 			if hostOutput == c.HostOutput {
 				currentContract = &c // safe to take address because we break
 				break
@@ -128,18 +132,21 @@ func (l *leaderboard) postUser(entry *userEntry, contractTxns []types.Transactio
 			if currentContract.Size > rev.NewFileSize {
 				continue
 			} else {
-				delete(entry.contracts, currentContract.ID)
+				delete(newcontracts, currentContract.ID)
 			}
 		}
 		if valid, err := validateTransaction(txn); err != nil || !valid {
 			continue
 		}
-		entry.contracts[rev.ParentID] = contractEntry{
+		newcontracts[rev.ParentID] = contractEntry{
 			ID:         rev.ParentID,
 			Size:       scaleSize(rev.NewFileSize, rev.NewValidProofOutputs[1].Value),
 			EndHeight:  rev.NewWindowStart,
 			HostOutput: hostOutput,
 		}
+	}
+	if len(newcontracts) > 0 {
+		return errors.New("all supplied contracts were invalid")
 	}
 	return nil
 }
