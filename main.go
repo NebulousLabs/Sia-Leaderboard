@@ -39,9 +39,12 @@ func validateTransaction(txn types.Transaction) (bool, error) {
 // paid less than minPrice per byte, the number of bytes is scaled as though
 // storage cost minPrice.
 func scaleSize(filesize uint64, price types.Currency) uint64 {
+	if filesize == 0 {
+		return 0
+	}
 	if perByte := price.Div64(filesize); perByte.Cmp(minPrice) < 0 {
-		// scale by price/minPrice
-		filesize, _ = types.NewCurrency64(filesize).Mul(price).Div(minPrice).Uint64()
+		// scale by perByte/minPrice
+		filesize, _ = types.NewCurrency64(filesize).Mul(perByte).Div(minPrice).Uint64()
 	}
 	return filesize
 }
