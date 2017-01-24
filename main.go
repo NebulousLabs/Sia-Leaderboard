@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/dchest/blake2b"
@@ -99,12 +100,13 @@ type leaderboard struct {
 }
 
 type userEntry struct {
-	name      string
-	email     string
-	password  [32]byte // hash
-	salt      [32]byte
-	groups    []string
-	contracts map[types.FileContractID]contractEntry
+	name         string
+	email        string
+	password     [32]byte // hash
+	salt         [32]byte
+	groups       []string
+	contracts    map[types.FileContractID]contractEntry
+	lastModified int64 // Unix timestamp
 }
 
 type contractEntry struct {
@@ -159,11 +161,12 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 			return errors.New("could not generate salt: " + err.Error())
 		}
 		user = &userEntry{
-			name:     name,
-			email:    email,
-			password: blake2b.Sum256(append([]byte(password), salt[:]...)),
-			salt:     salt,
-			groups:   groups,
+			name:      name,
+			email:     email,
+			password:  blake2b.Sum256(append([]byte(password), salt[:]...)),
+			salt:      salt,
+			groups:    groups,
+			contracts: make(map[types.FileContractID]contractEntry),
 		}
 	}
 
@@ -186,15 +189,17 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 		}
 	}
 
-	// update (or insert) entry
+	// update lastModified and insert entry
+	user.lastModified = time.Now().Unix()
 	l.users[name] = user
 	return nil
 }
 
 func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	type leaderEntry struct {
-		Name string `json:"name"`
-		Size uint64 `json:"size"`
+		Name      string `json:"name"`
+		Size      uint64 `json:"size"`
+		Timestamp int64  `json:"timestamp"`
 	}
 
 	leaders := make([]leaderEntry, 0, len(l.users))
@@ -204,8 +209,9 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 			totalSize += c.Size
 		}
 		leaders = append(leaders, leaderEntry{
-			Name: user.name,
-			Size: totalSize,
+			Name:      user.name,
+			Size:      totalSize,
+			Timestamp: user.lastModified,
 		})
 	}
 	json.NewEncoder(w).Encode(leaders)
