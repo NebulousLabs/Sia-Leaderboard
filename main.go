@@ -15,6 +15,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+const siadValidationURL = "http://localhost:9980/consensus/validate/transactionset"
+
 var minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e9) // 250 SC/TB
 
 func validateTransaction(txn types.Transaction) (bool, error) {
@@ -22,7 +24,7 @@ func validateTransaction(txn types.Transaction) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	req, err := http.NewRequest("POST", "localhost:9980/consensus/validate/transactionset", bytes.NewReader(txnJson))
+	req, err := http.NewRequest("POST", siadValidationURL, bytes.NewReader(txnJson))
 	if err != nil {
 		return false, err
 	}
@@ -32,7 +34,9 @@ func validateTransaction(txn types.Transaction) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return resp.StatusCode == 200, nil
+	defer resp.Body.Close()
+	valid := (200 <= resp.StatusCode && resp.StatusCode < 300)
+	return valid, nil
 }
 
 // scaleSize adjusts the number of bytes that a contract counts for. If the user
@@ -127,8 +131,8 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 	}
 
 	// are we creating a new user, or updating an existing one?
-	user, ok := l.users[name]
-	if ok {
+	user, updating := l.users[name]
+	if updating {
 		// if updating, password must match
 		hash := blake2b.Sum256(append([]byte(password), user.salt[:]...))
 		if !bytes.Equal(hash[:], user.password[:]) {
@@ -164,7 +168,7 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 	}
 
 	// validate contractTxns
-	if len(contractTxns) == 0 {
+	if len(contractTxns) > 0 {
 		valid := validTransactions(contractTxns)
 		if len(valid) == 0 {
 			return errors.New("all supplied contracts were invalid")
@@ -208,10 +212,10 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 }
 
 func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	name := req.FormValue("name")
-	email := req.FormValue("email")
-	password := req.FormValue("password")
-	groups := strings.Split(req.FormValue("groups"), ",")
+	name := req.PostFormValue("name")
+	email := req.PostFormValue("email")
+	password := req.PostFormValue("password")
+	groups := strings.Split(req.PostFormValue("groups"), ",")
 	for i := range groups {
 		groups[i] = strings.TrimSpace(groups[i])
 	}
@@ -251,6 +255,10 @@ func main() {
 	router.RedirectTrailingSlash = false
 	router.GET("/leaderboard", board.getLeaderboardHandler)
 	router.POST("/user", board.postUserHandler)
+	// Use NotFound to side-step httprouter's strict path rules. More explicit
+	// would be to serve static content under /static/
+	router.NotFound = http.FileServer(http.Dir("dist"))
 
+	log.Println("Listening on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
