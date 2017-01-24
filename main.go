@@ -7,8 +7,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
-
 	"net/mail"
+	"strings"
 
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/dchest/blake2b"
@@ -49,8 +49,47 @@ func scaleSize(filesize uint64, price types.Currency) uint64 {
 	return filesize
 }
 
+func validTransactions(contractTxns []types.Transaction) map[types.FileContractID]contractEntry {
+	valid := make(map[types.FileContractID]contractEntry)
+	for _, txn := range contractTxns {
+		if len(txn.FileContractRevisions) == 0 {
+			continue
+		}
+		rev := txn.FileContractRevisions[0]
+		if len(rev.NewValidProofOutputs) != 2 {
+			continue
+		}
+		hostOutput := rev.NewValidProofOutputs[1].UnlockHash
+		var currentContract *contractEntry
+		for _, c := range valid {
+			if hostOutput == c.HostOutput {
+				currentContract = &c // safe to take address because we break
+				break
+			}
+		}
+		if currentContract != nil {
+			// If the existing contract for this host is larger, ignore the
+			// new one. If it is smaller, delete the existing contract.
+			if currentContract.Size > rev.NewFileSize {
+				continue
+			} else {
+				delete(valid, currentContract.ID)
+			}
+		}
+		if valid, err := validateTransaction(txn); err != nil || !valid {
+			continue
+		}
+		valid[rev.ParentID] = contractEntry{
+			ID:         rev.ParentID,
+			Size:       scaleSize(rev.NewFileSize, rev.NewValidProofOutputs[1].Value),
+			EndHeight:  rev.NewWindowStart,
+			HostOutput: hostOutput,
+		}
+	}
+	return valid
+}
+
 type leaderboard struct {
-	//db *bolt.DB
 	users     map[string]*userEntry
 	contracts map[types.FileContractID]string
 }
@@ -71,118 +110,130 @@ type contractEntry struct {
 	HostOutput types.UnlockHash
 }
 
-func (l *leaderboard) createUser(name, email, password string, groups []string, contractTxns []types.Transaction) error {
-	// validate username, email, and groups
+// insertUser adds a user to the database. If the user is already present in the
+// database, their entry is overwritten.
+func (l *leaderboard) insertUser(name, email, password string, groups []string, contractTxns []types.Transaction) error {
+	// validate username and password
 	if name == "" {
 		return errors.New("invalid name")
+	} else if password == "" {
+		return errors.New("password must not be empty")
 	}
-	if _, err := mail.ParseAddress(email); err != nil {
-		return errors.New("invalid email: " + err.Error())
+	// validate email and groups, if supplied
+	if email != "" {
+		if _, err := mail.ParseAddress(email); err != nil {
+			return errors.New("invalid email: " + err.Error())
+		}
 	}
-	_, ok := l.users[name]
-	if ok {
-		return errors.New("user already exists")
-	}
-	// create entry
-	entry := &userEntry{
-		name:      name,
-		email:     email,
-		password:  blake2b.Sum256([]byte(password)),
-		groups:    groups,
-		contracts: make(map[types.FileContractID]contractEntry),
-	}
-	_, err := rand.Read(entry.salt[:])
-	if err != nil {
-		return errors.New("could not generate salt: " + err.Error())
-	}
-	l.users[name] = entry
-	// postUser validates the contractTxns
-	return l.postUser(entry, contractTxns)
-}
 
-// TODO: support updating email/groups
-func (l *leaderboard) postUser(entry *userEntry, contractTxns []types.Transaction) error {
-	if len(contractTxns) == 0 {
-		return nil
+	// are we creating a new user, or updating an existing one?
+	user, ok := l.users[name]
+	if ok {
+		// if updating, password must match
+		hash := blake2b.Sum256(append([]byte(password), user.salt[:]...))
+		if !bytes.Equal(hash[:], user.password[:]) {
+			return errors.New("wrong password")
+		}
+		// set new email + groups if supplied
+		if email != "" {
+			user.email = email
+		}
+		if len(groups) != 0 {
+			user.groups = groups
+		}
+	} else {
+		// if creating, email and contractTxns must be supplied
+		if email == "" {
+			return errors.New("no email supplied")
+		} else if len(contractTxns) == 0 {
+			return errors.New("no contracts supplied")
+		}
+		// create user
+		var salt [32]byte
+		_, err := rand.Read(salt[:])
+		if err != nil {
+			return errors.New("could not generate salt: " + err.Error())
+		}
+		user = &userEntry{
+			name:     name,
+			email:    email,
+			password: blake2b.Sum256(append([]byte(password), salt[:]...)),
+			salt:     salt,
+			groups:   groups,
+		}
 	}
+
 	// validate contractTxns
-	entry, ok := l.users[entry.name]
-	if !ok {
-		return errors.New("user does not exist")
-	}
-	newcontracts := make(map[types.FileContractID]contractEntry)
-	for _, txn := range contractTxns {
-		if len(txn.FileContractRevisions) == 0 {
-			continue
+	if len(contractTxns) == 0 {
+		valid := validTransactions(contractTxns)
+		if len(valid) == 0 {
+			return errors.New("all supplied contracts were invalid")
 		}
-		rev := txn.FileContractRevisions[0]
-		if len(rev.NewValidProofOutputs) != 2 {
-			continue
-		}
-		hostOutput := rev.NewValidProofOutputs[1].UnlockHash
-		var currentContract *contractEntry
-		for _, c := range newcontracts {
-			if hostOutput == c.HostOutput {
-				currentContract = &c // safe to take address because we break
-				break
+		user.contracts = valid
+		for id := range valid {
+			// if contract was already claimed by a different user, steal it
+			if othername, ok := l.contracts[id]; ok {
+				if other, ok := l.users[othername]; ok {
+					delete(other.contracts, id)
+				}
 			}
+			// associate contract with user
+			l.contracts[id] = name
 		}
-		if currentContract != nil {
-			// If the existing contract for this host is larger, ignore the
-			// new one. If it is smaller, delete the existing contract.
-			if currentContract.Size > rev.NewFileSize {
-				continue
-			} else {
-				delete(newcontracts, currentContract.ID)
-			}
-		}
-		if valid, err := validateTransaction(txn); err != nil || !valid {
-			continue
-		}
-		newcontracts[rev.ParentID] = contractEntry{
-			ID:         rev.ParentID,
-			Size:       scaleSize(rev.NewFileSize, rev.NewValidProofOutputs[1].Value),
-			EndHeight:  rev.NewWindowStart,
-			HostOutput: hostOutput,
-		}
-		// if contract was already claimed by a different user, steal it
-		if othername, ok := l.contracts[rev.ParentID]; ok {
-			other, ok := l.users[othername]
-			if ok {
-				delete(other.contracts, rev.ParentID)
-			}
-		}
-		l.contracts[rev.ParentID] = entry.name
 	}
-	if len(newcontracts) > 0 {
-		return errors.New("all supplied contracts were invalid")
-	}
+
+	// update (or insert) entry
+	l.users[name] = user
 	return nil
 }
 
-func (l *leaderboard) getUser(username string) (*userEntry, bool) {
-	entry, ok := l.users[username]
-	return entry, ok
-}
-
 func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	w.Write([]byte("not implemented"))
-}
+	type leaderEntry struct {
+		Name string `json:"name"`
+		Size uint64 `json:"size"`
+	}
 
-func (l *leaderboard) getUserHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	w.Write([]byte("not implemented"))
+	leaders := make([]leaderEntry, 0, len(l.users))
+	for _, user := range l.users {
+		var totalSize uint64
+		for _, c := range user.contracts {
+			totalSize += c.Size
+		}
+		leaders = append(leaders, leaderEntry{
+			Name: user.name,
+			Size: totalSize,
+		})
+	}
+	json.NewEncoder(w).Encode(leaders)
 }
 
 func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	w.Write([]byte("not implemented"))
+	name := req.FormValue("name")
+	email := req.FormValue("email")
+	password := req.FormValue("password")
+	groups := strings.Split(req.FormValue("groups"), ",")
+	for i := range groups {
+		groups[i] = strings.TrimSpace(groups[i])
+	}
+	file, _, err := req.FormFile("contracts")
+	if err != nil {
+		http.Error(w, "could not open contracts file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	var contractTxns []types.Transaction
+	if err := json.NewDecoder(file).Decode(&contractTxns); err != nil {
+		http.Error(w, "could not decode contracts file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	err = l.insertUser(name, email, password, groups, contractTxns)
+	if err != nil {
+		http.Error(w, "could not add or update user: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 }
 
 func newLeaderboard(filename string) (*leaderboard, error) {
-	// db, err := bolt.Open(filename, bolt.DefaultOptions)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// return &leaderboard{db}, nil
 	return &leaderboard{
 		users:     make(map[string]*userEntry),
 		contracts: make(map[types.FileContractID]string),
@@ -199,7 +250,6 @@ func main() {
 	router := httprouter.New()
 	router.RedirectTrailingSlash = false
 	router.GET("/leaderboard", board.getLeaderboardHandler)
-	router.GET("/user", board.getUserHandler)
 	router.POST("/user", board.postUserHandler)
 
 	log.Fatal(http.ListenAndServe(":8080", router))
