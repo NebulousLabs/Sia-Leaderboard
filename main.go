@@ -51,7 +51,8 @@ func scaleSize(filesize uint64, price types.Currency) uint64 {
 
 type leaderboard struct {
 	//db *bolt.DB
-	users map[string]*userEntry
+	users     map[string]*userEntry
+	contracts map[types.FileContractID]string
 }
 
 type userEntry struct {
@@ -144,6 +145,14 @@ func (l *leaderboard) postUser(entry *userEntry, contractTxns []types.Transactio
 			EndHeight:  rev.NewWindowStart,
 			HostOutput: hostOutput,
 		}
+		// if contract was already claimed by a different user, steal it
+		if othername, ok := l.contracts[rev.ParentID]; ok {
+			other, ok := l.users[othername]
+			if ok {
+				delete(other.contracts, rev.ParentID)
+			}
+		}
+		l.contracts[rev.ParentID] = entry.name
 	}
 	if len(newcontracts) > 0 {
 		return errors.New("all supplied contracts were invalid")
@@ -175,7 +184,8 @@ func newLeaderboard(filename string) (*leaderboard, error) {
 	// }
 	// return &leaderboard{db}, nil
 	return &leaderboard{
-		users: make(map[string]*userEntry),
+		users:     make(map[string]*userEntry),
+		contracts: make(map[types.FileContractID]string),
 	}, nil
 }
 
