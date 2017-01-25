@@ -1,0 +1,49 @@
+html, body {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+.header {
+	height: 80px;
+	width: 100%;
+	background-color: #313133;
+	background: linear-gradient(to left, #313133 15%, #0b0e16 85%);
+	margin: 0;
+	padding: 0;
+}
+
+.header-image {
+	padding-top: 10px;
+	padding-left: 20px;
+}
+
+.header-text {
+	display: inline-block;
+	color: #eee;
+	height: 20px;
+	margin-left: 10px;
+	padding-bottom: 20px;
+}
+
+#react-root {
+	width: 100%;
+	height: 100%;
+
+	display: flex;
+	display: -webkit-flex;
+	justify-content: center;
+}
+.pure-menu-link:hover{
+	background-color: #313133 !important;
+}
+.pure-menu-item {
+	float: left;
+}
+
+form {
+	margin: auto;
+	width: 400px;
+	padding: 10px;
+}

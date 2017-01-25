@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Sia Leaderboard - Upload</title>
+		<link rel="stylesheet" href="style.css">
+		<link rel="stylesheet" href="./assets/pure/pure-min.css">
+	</head>
+	<body>
+		<div class="header pure-menu pure-menu-horizontal">
+			<img class="header-image" src="assets/siaLogo.svg" height="50">
+			<ul class="pure-menu-list">
+				<li class="pure-menu-item"><a class="pure-menu-link" href="index.html"> Top Users </a></li>
+				<li class="pure-menu-item"><a class="pure-menu-link" href="topgroups.html"> Top Groups </a></li>
+				<li class="pure-menu-item"><a class="pure-menu-link" href="upload.html"> Submit </a></li>
+			</div>
+		</div>
+		<form style="margin-left: auto; margin-right: auto;" action="/user" method="post" enctype="multipart/form-data" class="pure-form-aligned pure-form pure-form-stacked">
+			<fieldset> 
+				<legend>Submit your data usage to the leaderboard</legend>
+				
+				<label for="email">Email</label>
+				<input id="email" type="email" name="email" placeholder="Email">
+				<label for="name">Name</label>
+				<input id="name" type="text" name="name" placeholder="Name">
+				<label for="password">Password</label>
+				<input id="password" type="password" name="password" placeholder="Password">
+				<label for="groups">Groups</label>
+				<input id="groups" type="text" name="groups" placeholder="Groups (comma-separated">
+				<label for="contracts">Contracts</label>
+				<input id="contracts" type="file" name="contracts" accept="json">
+				<button type="submit" class="pure-button pure-button-primary">Submit</button>
+			</fieldset>
+		</form>
+	</body>
+</html>
