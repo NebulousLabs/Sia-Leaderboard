@@ -8,14 +8,6 @@ import { parseLeaders } from './parse.js'
 let entries = List()
 let render = () => { }
 
-request.get('/leaderboard').end((err, res) => {
-	if (err) {
-		console.error(err)
-	}
-	entries = parseLeaders(JSON.parse(res.text))
-	render()
-})
-
 let sort = 'uploaded'
 let groupFilters = []
 
@@ -46,5 +38,11 @@ render = () => {
 	)
 }
 
-render()
+request.get('/leaderboard').end((err, res) => {
+	if (err) {
+		console.error(err)
+	}
+	entries = parseLeaders(JSON.parse(res.text))
+	render()
+})
 
