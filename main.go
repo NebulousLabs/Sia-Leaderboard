@@ -9,18 +9,25 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/NebulousLabs/Sia/api"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/dchest/blake2b"
 	"github.com/julienschmidt/httprouter"
 )
 
-const siadValidationURL = "http://localhost:9980/consensus/validate/transactionset"
+const (
+	siadValidationURL  = "http://localhost:9980/consensus/validate/transactionset"
+	siadBlockHeightURL = "http://localhost:9980/consensus"
+
+	pollInterval = 10 * time.Minute // approx. once per block
+)
 
 var minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e9) // 250 SC/TB
 
-func validateTransaction(txn types.Transaction) (bool, error) {
+func postValidateTransaction(txn types.Transaction) (bool, error) {
 	txnJson, err := json.Marshal([]types.Transaction{txn})
 	if err != nil {
 		return false, err
@@ -38,6 +45,29 @@ func validateTransaction(txn types.Transaction) (bool, error) {
 	defer resp.Body.Close()
 	valid := (200 <= resp.StatusCode && resp.StatusCode < 300)
 	return valid, nil
+}
+
+func getCurrentBlockHeight() (types.BlockHeight, error) {
+	req, err := http.NewRequest("GET", siadBlockHeightURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("User-Agent", "Sia-Agent")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if !(200 <= resp.StatusCode && resp.StatusCode < 300) {
+		var apiErr api.Error
+		json.NewDecoder(resp.Body).Decode(&apiErr)
+		return 0, apiErr
+	}
+
+	var cg api.ConsensusGET
+	err = json.NewDecoder(resp.Body).Decode(&cg)
+	return cg.Height, err
 }
 
 // scaleSize adjusts the number of bytes that a contract counts for. If the user
@@ -81,7 +111,7 @@ func validTransactions(contractTxns []types.Transaction) map[types.FileContractI
 				delete(valid, currentContract.ID)
 			}
 		}
-		if valid, err := validateTransaction(txn); err != nil || !valid {
+		if valid, err := postValidateTransaction(txn); err != nil || !valid {
 			continue
 		}
 		valid[rev.ParentID] = contractEntry{
@@ -97,6 +127,7 @@ func validTransactions(contractTxns []types.Transaction) map[types.FileContractI
 type leaderboard struct {
 	users     map[string]*userEntry
 	contracts map[types.FileContractID]string
+	mu        sync.RWMutex
 }
 
 type userEntry struct {
@@ -188,6 +219,22 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 			l.contracts[id] = name
 		}
 	}
+	numValid := len(user.contracts)
+	numInvalid := len(contractTxns) - numValid
+
+	if updating {
+		if email != "" {
+			log.Printf("User %q changed email to %q", name, email)
+		}
+		if len(groups) != 0 {
+			log.Printf("User %q changed groups to %v", name, groups)
+		}
+		if len(contractTxns) != 0 {
+			log.Printf("User %q added %v valid contracts (%v invalid)", name, numValid, numInvalid)
+		}
+	} else {
+		log.Printf("Added new user %q %q (groups: %v) with %v valid contracts (%v invalid)", name, email, groups, numValid, numInvalid)
+	}
 
 	// update lastModified and insert entry
 	user.lastModified = time.Now().Unix()
@@ -201,7 +248,7 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 		Size      uint64 `json:"size"`
 		Timestamp int64  `json:"timestamp"`
 	}
-
+	l.mu.RLock()
 	leaders := make([]leaderEntry, 0, len(l.users))
 	for _, user := range l.users {
 		var totalSize uint64
@@ -214,6 +261,7 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 			Timestamp: user.lastModified,
 		})
 	}
+	l.mu.RUnlock()
 	json.NewEncoder(w).Encode(leaders)
 }
 
@@ -236,10 +284,38 @@ func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, 
 		http.Error(w, "could not decode contracts file: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	l.mu.Lock()
 	err = l.insertUser(name, email, password, groups, contractTxns)
+	l.mu.Unlock()
 	if err != nil {
 		http.Error(w, "could not add or update user: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+}
+
+func (l *leaderboard) purgeOldContracts() {
+	for range time.Tick(pollInterval) {
+		currentHeight, err := getCurrentBlockHeight()
+		if err != nil {
+			log.Println("Couldn't get block height:", err)
+			continue // hopefully transient
+		}
+
+		// purge contracts that have expired
+		l.mu.Lock()
+		for _, user := range l.users {
+			var toDelete []types.FileContractID
+			for id, c := range user.contracts {
+				if c.EndHeight < currentHeight {
+					toDelete = append(toDelete, id)
+				}
+			}
+			for _, id := range toDelete {
+				delete(user.contracts, id)
+				delete(l.contracts, id)
+			}
+		}
+		l.mu.Unlock()
 	}
 }
 
@@ -251,11 +327,11 @@ func newLeaderboard(filename string) (*leaderboard, error) {
 }
 
 func main() {
-	log.SetFlags(0)
 	board, err := newLeaderboard("leaderboard.db")
 	if err != nil {
 		log.Fatal(err)
 	}
+	go board.purgeOldContracts()
 
 	router := httprouter.New()
 	router.RedirectTrailingSlash = false
