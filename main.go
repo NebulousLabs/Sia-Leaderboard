@@ -437,7 +437,7 @@ func main() {
 	router.POST("/user", board.postUserHandler)
 	// Use NotFound to side-step httprouter's strict path rules. More explicit
 	// would be to serve static content under /static/
-	router.NotFound = http.FileServer(http.Dir("dist"))
+	router.NotFound = http.FileServer(http.Dir("frontend/dist"))
 
 	log.Println("Listening on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", router))
