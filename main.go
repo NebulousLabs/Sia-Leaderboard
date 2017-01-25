@@ -201,6 +201,7 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 		Size      uint64 `json:"size"`
 		Timestamp int64  `json:"timestamp"`
 	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	leaders := make([]leaderEntry, 0, len(l.users))
 	for _, user := range l.users {
