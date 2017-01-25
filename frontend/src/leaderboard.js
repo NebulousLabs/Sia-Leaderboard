@@ -11,7 +11,7 @@ const Leaderboard = ({entries, groupFilters, sort}) => {
 	if (sort === 'uploaded') {
 		sortedEntries = entries.sortBy((entry) => -entry.size)
 	} else if (sort === 'timestamp') {
-		sortedEntries = entries.sortBy((entry) => entry.lastUpdated)
+		sortedEntries = entries.sortBy((entry) => -entry.lastUpdated)
 	}
 
 	return (
