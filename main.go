@@ -268,17 +268,24 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 }
 
 func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	if req.ContentLength > 1e6 {
+		http.Error(w, "contracts file must not exceed 1 MB", http.StatusBadRequest)
+		return
+	}
+	// don't trust the client; limit size to 1 MB anyway
+	req.Body = http.MaxBytesReader(w, req.Body, 1e6)
+	file, _, err := req.FormFile("contracts")
+	if err != nil {
+		http.Error(w, "could not open contracts file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	name := req.PostFormValue("name")
 	email := req.PostFormValue("email")
 	password := req.PostFormValue("password")
 	groups := strings.Split(req.PostFormValue("groups"), ",")
 	for i := range groups {
 		groups[i] = strings.TrimSpace(groups[i])
-	}
-	file, _, err := req.FormFile("contracts")
-	if err != nil {
-		http.Error(w, "could not open contracts file: "+err.Error(), http.StatusBadRequest)
-		return
 	}
 	defer file.Close()
 	var contractTxns []types.Transaction
