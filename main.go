@@ -293,6 +293,7 @@ func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, 
 		http.Error(w, "could not add or update user: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	http.Redirect(w, req, "/", http.StatusSeeOther)
 }
 
 func (l *leaderboard) purgeOldContracts() {
