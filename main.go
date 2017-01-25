@@ -164,6 +164,17 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 			return errors.New("invalid email: " + err.Error())
 		}
 	}
+	if len(groups) != 0 {
+		// filter out empty groups
+		var filtered []string
+		for _, g := range groups {
+			if g != "" {
+				filtered = append(filtered, g)
+			}
+		}
+		// limit to 3 groups
+		groups = filtered[:3]
+	}
 
 	// are we creating a new user, or updating an existing one?
 	user, updating := l.users[name]
