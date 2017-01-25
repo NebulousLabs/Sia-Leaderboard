@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -127,6 +128,7 @@ func validTransactions(contractTxns []types.Transaction) map[types.FileContractI
 type leaderboard struct {
 	users     map[string]*userEntry
 	contracts map[types.FileContractID]string
+	filename  string
 	mu        sync.RWMutex
 }
 
@@ -239,6 +241,12 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 	// update lastModified and insert entry
 	user.lastModified = time.Now().Unix()
 	l.users[name] = user
+
+	// save db
+	if err := l.save(); err != nil {
+		log.Println("ERROR: couldn't save db:", err)
+	}
+
 	return nil
 }
 
@@ -269,7 +277,8 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 
 func (l *leaderboard) postUserHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if req.ContentLength > 1e6 {
-		http.Error(w, "contracts file must not exceed 1 MB", http.StatusBadRequest)
+		http.Error(w, "contracts file must not exceed 1 MB", http.StatusInternalServerError)
+		log.Printf("%v tried submitting a form with size %v", req.RemoteAddr, req.ContentLength)
 		return
 	}
 	// don't trust the client; limit size to 1 MB anyway
@@ -329,11 +338,90 @@ func (l *leaderboard) purgeOldContracts() {
 	}
 }
 
+type persistData struct {
+	Users []userPersist
+}
+
+type userPersist struct {
+	Name         string
+	Email        string
+	Password     [32]byte // hash
+	Salt         [32]byte
+	Groups       []string
+	Contracts    []contractEntry
+	LastModified int64 // Unix timestamp
+}
+
+func (l *leaderboard) save() error {
+	f, err := os.Create(l.filename)
+	if err != nil {
+		return err
+	}
+
+	data := persistData{
+		Users: make([]userPersist, 0, len(l.users)),
+	}
+	for _, user := range l.users {
+		userContracts := make([]contractEntry, 0, len(user.contracts))
+		for _, c := range user.contracts {
+			userContracts = append(userContracts, c)
+		}
+		data.Users = append(data.Users, userPersist{
+			Name:         user.name,
+			Email:        user.email,
+			Password:     user.password,
+			Salt:         user.salt,
+			Groups:       user.groups,
+			Contracts:    userContracts,
+			LastModified: user.lastModified,
+		})
+	}
+
+	return json.NewEncoder(f).Encode(data)
+}
+
+func (l *leaderboard) load() error {
+	f, err := os.Open(l.filename)
+	if err != nil {
+		return err
+	}
+	var data persistData
+	err = json.NewDecoder(f).Decode(&data)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range data.Users {
+		userContracts := make(map[types.FileContractID]contractEntry)
+		for _, c := range user.Contracts {
+			userContracts[c.ID] = c
+			l.contracts[c.ID] = user.Name
+		}
+		l.users[user.Name] = &userEntry{
+			name:         user.Name,
+			email:        user.Email,
+			password:     user.Password,
+			salt:         user.Salt,
+			groups:       user.Groups,
+			contracts:    userContracts,
+			lastModified: user.LastModified,
+		}
+	}
+
+	return nil
+}
+
 func newLeaderboard(filename string) (*leaderboard, error) {
-	return &leaderboard{
+	l := &leaderboard{
+		filename:  filename,
 		users:     make(map[string]*userEntry),
 		contracts: make(map[types.FileContractID]string),
-	}, nil
+	}
+	err := l.load()
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return l, nil
 }
 
 func main() {
