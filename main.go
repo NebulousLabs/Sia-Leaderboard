@@ -172,8 +172,11 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 				filtered = append(filtered, g)
 			}
 		}
+		groups = filtered
 		// limit to 3 groups
-		groups = filtered[:3]
+		if len(groups) > 3 {
+			groups = groups[:3]
+		}
 	}
 
 	// are we creating a new user, or updating an existing one?
