@@ -244,9 +244,10 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 
 func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	type leaderEntry struct {
-		Name      string `json:"name"`
-		Size      uint64 `json:"size"`
-		Timestamp int64  `json:"timestamp"`
+		Name      string   `json:"name"`
+		Size      uint64   `json:"size"`
+		Groups    []string `json:"groups"`
+		Timestamp int64    `json:"timestamp"`
 	}
 	l.mu.RLock()
 	leaders := make([]leaderEntry, 0, len(l.users))
@@ -258,6 +259,7 @@ func (l *leaderboard) getLeaderboardHandler(w http.ResponseWriter, req *http.Req
 		leaders = append(leaders, leaderEntry{
 			Name:      user.name,
 			Size:      totalSize,
+			Groups:    user.groups,
 			Timestamp: user.lastModified,
 		})
 	}
