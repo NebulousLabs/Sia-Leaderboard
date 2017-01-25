@@ -207,7 +207,6 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 		if len(valid) == 0 {
 			return errors.New("all supplied contracts were invalid")
 		}
-		user.contracts = valid
 		for id := range valid {
 			// if contract was already claimed by a different user, steal it
 			if othername, ok := l.contracts[id]; ok {
@@ -218,6 +217,7 @@ func (l *leaderboard) insertUser(name, email, password string, groups []string, 
 			// associate contract with user
 			l.contracts[id] = name
 		}
+		user.contracts = valid
 	}
 	numValid := len(user.contracts)
 	numInvalid := len(contractTxns) - numValid
