@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/NebulousLabs/Sia/api"
+	"github.com/NebulousLabs/Sia/persist"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/dchest/blake2b"
 	"github.com/julienschmidt/httprouter"
@@ -26,7 +27,14 @@ const (
 	pollInterval = 10 * time.Minute // approx. once per block
 )
 
-var minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e12) // 250 SC/TB
+var (
+	minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e12) // 250 SC/TB
+
+	meta = persist.Metadata{
+		Header:  "Sia Leaderboard DB",
+		Version: "1.0",
+	}
+)
 
 func postValidateTransaction(txn types.Transaction) (bool, error) {
 	txnJson, err := json.Marshal([]types.Transaction{txn})
@@ -367,11 +375,6 @@ type userPersist struct {
 }
 
 func (l *leaderboard) save() error {
-	f, err := os.Create(l.filename)
-	if err != nil {
-		return err
-	}
-
 	data := persistData{
 		Users: make([]userPersist, 0, len(l.users)),
 	}
@@ -391,16 +394,12 @@ func (l *leaderboard) save() error {
 		})
 	}
 
-	return json.NewEncoder(f).Encode(data)
+	return persist.SaveFileSync(meta, data, l.filename)
 }
 
 func (l *leaderboard) load() error {
-	f, err := os.Open(l.filename)
-	if err != nil {
-		return err
-	}
 	var data persistData
-	err = json.NewDecoder(f).Decode(&data)
+	err := persist.LoadFile(meta, &data, l.filename)
 	if err != nil {
 		return err
 	}
