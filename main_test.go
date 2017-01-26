@@ -23,7 +23,7 @@ func TestScaleSize(t *testing.T) {
 		{100, 500, 100},
 	}
 	for _, test := range tests {
-		price := types.SiacoinPrecision.Mul64(test.pricePerTB).Mul64(test.size).Div64(1e9)
+		price := types.SiacoinPrecision.Mul64(test.pricePerTB).Mul64(test.size).Div64(1e12)
 		if f := scaleSize(test.size, price); f != test.exp {
 			t.Errorf("Expected scaleSize(%v, %v) == %v; got %v", test.size, test.pricePerTB, test.exp, f)
 		}

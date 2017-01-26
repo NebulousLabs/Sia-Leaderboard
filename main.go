@@ -26,7 +26,7 @@ const (
 	pollInterval = 10 * time.Minute // approx. once per block
 )
 
-var minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e9) // 250 SC/TB
+var minPrice = types.SiacoinPrecision.Mul64(250).Div64(1e12) // 250 SC/TB
 
 func postValidateTransaction(txn types.Transaction) (bool, error) {
 	txnJson, err := json.Marshal([]types.Transaction{txn})
