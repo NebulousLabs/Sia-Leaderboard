@@ -7,7 +7,7 @@ const dataStyle = {
 const LeaderboardEntry = ({name, size, lastUpdated, groups}) => (
 	<tr>
 		<td style={dataStyle} id="name">{name}</td>
-		<td style={dataStyle} id="numbytes">{size/1e9} GB</td>
+		<td style={dataStyle} id="numbytes">{size}</td>
 		<td style={dataStyle} id="timestamp">{lastUpdated.toString()}</td>
 		<td style={dataStyle} id="groups">
 			{

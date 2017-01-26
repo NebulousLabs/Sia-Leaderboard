@@ -26,7 +26,7 @@ const GroupLeaderboard = ({entries}) => {
 				{groupUploadValues.sortBy((uploaded) => -uploaded).map((uploaded, group) => (
 					<tr key={group}>
 						<td> {group} </td>
-						<td> {uploaded/1e9} GB </td>
+						<td> {uploaded} </td>
 					</tr>
 				)).toList()}
 			</tbody>
