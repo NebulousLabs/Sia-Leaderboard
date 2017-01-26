@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"time"
@@ -453,5 +454,13 @@ func main() {
 	router.NotFound = http.FileServer(http.Dir("./frontend/dist"))
 
 	log.Println("Listening on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", router))
+	go http.ListenAndServe(":8080", router)
+
+	// intercept signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, os.Kill)
+	<-sigChan
+	log.Println("Caught stop signal, quitting...")
+	// acquire write lock to ensure no data is being written when we exit
+	board.mu.Lock()
 }
