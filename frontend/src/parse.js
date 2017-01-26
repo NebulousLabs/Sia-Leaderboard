@@ -5,8 +5,7 @@ import { List } from 'immutable'
 export const parseLeaders = (leaderArray) =>
 	List(leaderArray.map((leader) => {
 		const ret = {groups: [], name: leader.name, lastUpdated: new Date(leader.timestamp*1000), size: leader.size}
-		console.log(leader)
-		if (typeof leader.groups !== 'undefined') {
+		if (typeof leader.groups !== 'undefined' && leader.groups !== null) {
 			ret.groups = leader.groups
 		}
 		return ret
