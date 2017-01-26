@@ -1,7 +1,7 @@
 import { List } from 'immutable'
 
 // Take a number of bytes and return a sane, human-readable size.
-const readableFilesize = (bytes) => {
+export const readableFilesize = (bytes) => {
 	const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 	let readableunit = 'B'
 	let readablesize = bytes
@@ -19,7 +19,7 @@ const readableFilesize = (bytes) => {
 // returns a parsed List of leaderboard entries.
 export const parseLeaders = (leaderArray) =>
 	List(leaderArray.map((leader) => {
-		const ret = {groups: [], name: leader.name, lastUpdated: new Date(leader.timestamp*1000), size: readableFilesize(leader.size)}
+		const ret = {groups: [], name: leader.name, lastUpdated: new Date(leader.timestamp*1000), size: leader.size}
 		if (typeof leader.groups !== 'undefined' && leader.groups !== null) {
 			ret.groups = leader.groups
 		}

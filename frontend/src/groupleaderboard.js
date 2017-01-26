@@ -1,5 +1,6 @@
 import React, { PropTypes } from 'react'
 import { List, Map } from 'immutable'
+import { readableFilesize } from './parse.js'
 
 const GroupLeaderboard = ({entries}) => {
 	let groupUploadValues = Map()
@@ -26,7 +27,7 @@ const GroupLeaderboard = ({entries}) => {
 				{groupUploadValues.sortBy((uploaded) => -uploaded).map((uploaded, group) => (
 					<tr key={group}>
 						<td> {group} </td>
-						<td> {uploaded} </td>
+						<td> {readableFilesize(uploaded)} </td>
 					</tr>
 				)).toList()}
 			</tbody>

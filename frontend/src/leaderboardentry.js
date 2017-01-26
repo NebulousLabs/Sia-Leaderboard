@@ -1,4 +1,5 @@
 import React, { PropTypes } from 'react'
+import { readableFilesize } from './parse.js'
 
 const dataStyle = {
 	paddingRight: '15px',
@@ -7,7 +8,7 @@ const dataStyle = {
 const LeaderboardEntry = ({name, size, lastUpdated, groups}) => (
 	<tr>
 		<td style={dataStyle} id="name">{name}</td>
-		<td style={dataStyle} id="numbytes">{size}</td>
+		<td style={dataStyle} id="numbytes">{readableFilesize(size)}</td>
 		<td style={dataStyle} id="timestamp">{lastUpdated.toString()}</td>
 		<td style={dataStyle} id="groups">
 			{
