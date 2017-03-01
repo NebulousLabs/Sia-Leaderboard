@@ -3,6 +3,7 @@ html, body {
 	height: 100%;
 	margin: 0;
 	padding: 0;
+	font-family: "Gotham A", "Gotham B", Helvetica, Arial, sans-serif;
 }
 
 .header {
@@ -46,4 +47,22 @@ form {
 	margin: auto;
 	width: 400px;
 	padding: 10px;
+}
+
+.about-container {
+	width: 80%;
+	max-width: 600px;
+	margin-left: auto;
+	margin-right: auto;
+	margin-top: 2rem;
+}
+
+.about-container p {
+	font-size: 18px;
+}
+
+.about-title {
+	text-align: center;
+	margin-bottom: 2rem;
+	font-size: 1.8rem;
 }
