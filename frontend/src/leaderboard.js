@@ -26,7 +26,8 @@ const Leaderboard = ({entries, groupFilters, sort}) => {
 			</thead>
 			<tbody>
 				{
-				sortedEntries.filter((entry) => groupFilters.length === 0 ? true : entry.groups.some((group) => groupFilters.includes(group))).map((entry, key) =>
+				sortedEntries.filter((entry) => entry.size > 0)
+				             .filter((entry) => groupFilters.length === 0 ? true : entry.groups.some((group) => groupFilters.includes(group))).map((entry, key) =>
 					<LeaderboardEntry
 						key={key}
 						name={entry.name}
