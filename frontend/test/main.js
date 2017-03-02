@@ -4,6 +4,7 @@ import { mount } from 'enzyme'
 import { jsdom } from 'jsdom'
 import { expect } from 'chai'
 import Leaderboard from '../src/leaderboard.js'
+import { readableFilesize } from '../src/parse.js'
 
 global.document = jsdom('')
 global.window = document.defaultView
@@ -32,7 +33,7 @@ describe('leaderboard', () => {
 		})
 		it('properly renders entry bytes', () => {
 			leaderboardEntryComponents.forEach((entry, idx) => {
-				const expectedText = (testEntries.get(idx).size/1e9).toString() + ' GB'
+				const expectedText = readableFilesize(testEntries.get(idx).size)
 				expect(entry.find('#numbytes').text()).to.equal(expectedText)
 			})
 		})
@@ -53,6 +54,13 @@ describe('leaderboard', () => {
 				}
 				expect(entry.find('#groups').text()).to.equal(expectedText)
 			})
+		})
+		it('filters 0 byte entries', () => {
+			const zerobyteTestEntries = testEntries.push(
+				{ name: 'testuser6', size: 0, lastUpdated: new Date(), groups: ['group1']}
+			)
+
+			expect(mount(<Leaderboard entries={zerobyteTestEntries} groupFilters={[]} />).find('LeaderboardEntry').length).to.equal(testEntries.size)
 		})
 	})
 
